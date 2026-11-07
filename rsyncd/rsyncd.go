@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"net"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -29,11 +30,14 @@ import (
 )
 
 type Module struct {
-	Name     string   `toml:"name"`
-	Path     string   `toml:"path"` // If empty, FS must be non-nil
-	FS       fs.FS    `toml:"-"`    // If set, serve from this instead of Path
-	ACL      []string `toml:"acl"`
-	Writable bool     `toml:"writable"` // Must be false if FS is set
+	Name string `toml:"name"`
+	Path string `toml:"path"` // If empty, FS or Root must be non-nil
+	FS   fs.FS  `toml:"-"`    // If set, serve from this instead of Path
+	// If set, serve from and receive into this instead of Path. FS, if also
+	// set, is served instead of Root.FS().
+	Root     rsync.DestRoot `toml:"-"`
+	ACL      []string       `toml:"acl"`
+	Writable bool           `toml:"writable"` // Must be false if FS is set without Root
 }
 
 // Option specifies the server options.
@@ -478,14 +482,20 @@ func (s *Server) handleConnReceiver(module *Module, crd *rsyncwire.CountingReade
 		Seed:     sessionChecksumSeed,
 		Progress: progress.NewPrinter(io.Discard, time.Now),
 	}
-	if err := os.MkdirAll(rt.Dest, 0755); err != nil {
-		return fmt.Errorf("MkdirAll(dest=%s): %v", rt.Dest, err)
+	if module.Root != nil {
+		rt.Dest = module.Name // for messages; there is no local path
+		rt.DestRoot = module.Root
+	} else {
+		if err := os.MkdirAll(rt.Dest, 0755); err != nil {
+			return fmt.Errorf("MkdirAll(dest=%s): %v", rt.Dest, err)
+		}
+		root, err := os.OpenRoot(rt.Dest)
+		if err != nil {
+			return fmt.Errorf("OpenRoot(dest=%s): %v", rt.Dest, err)
+		}
+		defer root.Close()
+		rt.DestRoot = rsync.OSRoot{Root: root}
 	}
-	rt.DestRoot, err = os.OpenRoot(rt.Dest)
-	if err != nil {
-		return fmt.Errorf("OpenRoot(dest=%s): %v", rt.Dest, err)
-	}
-	defer rt.DestRoot.Close()
 
 	if !implicitModule {
 		if len(paths) > 1 {
@@ -498,19 +508,21 @@ func (s *Server) handleConnReceiver(module *Module, crd *rsyncwire.CountingReade
 			// (*os.Root).MkdirAll("foo/") was a security issue:
 			// https://go.dev/issue/79005, so no longer works.
 			subdir := strings.Trim(paths[0], "/")
-			subRoot, err := rt.DestRoot.OpenRoot(subdir)
+			subRoot, err := rt.DestRoot.Sub(subdir)
 			if err != nil {
 				if os.IsNotExist(err) {
 					if err := rt.DestRoot.MkdirAll(subdir, 0755); err != nil {
 						return fmt.Errorf("MkdirAll(%s): %v", subdir, err)
 					}
-					subRoot, err = rt.DestRoot.OpenRoot(subdir)
+					subRoot, err = rt.DestRoot.Sub(subdir)
 				}
 				if err != nil {
 					return fmt.Errorf("OpenRoot(%s): %v", subdir, err)
 				}
 			}
-			if name := subRoot.Name(); filepath.IsAbs(name) {
+			if osRoot, ok := subRoot.(rsync.OSRoot); !ok {
+				rt.Dest = path.Join(rt.Dest, subdir)
+			} else if name := osRoot.Name(); filepath.IsAbs(name) {
 				rt.Dest = name
 			} else {
 				// Go changed behavior: In Go 1.25, subRoot.Name()
@@ -582,6 +594,8 @@ func (s *Server) handleConnSender(module *Module, crd *rsyncwire.CountingReader,
 
 	if module.FS != nil {
 		st.Source = sender.NewFSSource(module.FS)
+	} else if module.Root != nil {
+		st.Source = sender.NewFSSource(module.Root.FS())
 	}
 
 	exclusionList, err := sender.RecvFilterList(st.Conn)
@@ -663,7 +677,11 @@ func validateModule(mod Module) error {
 	if mod.Name == "" {
 		return errors.New("module has no name")
 	}
-	if mod.FS != nil {
+	if mod.Root != nil {
+		if mod.Path != "" {
+			return fmt.Errorf("module %q: cannot specify both Path and Root", mod.Name)
+		}
+	} else if mod.FS != nil {
 		if mod.Writable {
 			return fmt.Errorf("module %q: FS modules cannot be writable", mod.Name)
 		}

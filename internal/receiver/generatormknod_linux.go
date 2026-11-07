@@ -14,7 +14,11 @@ import (
 
 func (rt *Transfer) createDevice(f *File, st fs.FileInfo, perm fs.FileMode) error {
 	base := filepath.Base(f.Name)
-	parentDir, err := rt.DestRoot.OpenFile(filepath.Dir(f.Name), 0, 0)
+	root, ok := rt.DestRoot.(rsync.OSRoot)
+	if !ok {
+		return fmt.Errorf("%s: devices and special files can only be created in a local directory", f.Name)
+	}
+	parentDir, err := root.OpenFile(filepath.Dir(f.Name), 0, 0)
 	if err != nil {
 		return fmt.Errorf("Open(parent(%s)): %v", f.Name, err)
 	}

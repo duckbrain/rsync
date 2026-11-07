@@ -395,11 +395,12 @@ func ClientRun(osenv *rsyncos.Env, opts *rsyncopts.Options, conn io.ReadWriteClo
 		if err := os.MkdirAll(rt.Dest, 0755); err != nil {
 			return nil, fmt.Errorf("MkdirAll(dest=%s): %v", rt.Dest, err)
 		}
-		rt.DestRoot, err = os.OpenRoot(rt.Dest)
+		root, err := os.OpenRoot(rt.Dest)
 		if err != nil {
 			return nil, fmt.Errorf("OpenRoot(dest=%s): %v", rt.Dest, err)
 		}
-		defer rt.DestRoot.Close()
+		defer root.Close()
+		rt.DestRoot = rsync.OSRoot{Root: root}
 		if osenv.Restrict() {
 			if err := restrict.MaybeFileSystem(nil, []string{rt.Dest}); err != nil {
 				return nil, fmt.Errorf("landlock: %v", err)

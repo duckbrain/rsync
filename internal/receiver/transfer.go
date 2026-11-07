@@ -2,8 +2,8 @@ package receiver
 
 import (
 	"io/fs"
-	"os"
 
+	"github.com/gokrazy/rsync"
 	"github.com/gokrazy/rsync/internal/log"
 	"github.com/gokrazy/rsync/internal/progress"
 	"github.com/gokrazy/rsync/internal/rsyncopts"
@@ -42,7 +42,7 @@ type Transfer struct {
 	Logger   log.Logger
 	Opts     *TransferOpts
 	Dest     string
-	DestRoot *os.Root
+	DestRoot rsync.DestRoot
 	Env      *rsyncos.Env
 	Progress progress.Printer
 

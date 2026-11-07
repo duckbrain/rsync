@@ -87,7 +87,7 @@ func fuzzTransfer(t *testing.T, tmp string, root *os.Root, opts1, opts2, opts3 b
 			},
 		},
 		Dest:     tmp,
-		DestRoot: root,
+		DestRoot: rsync.OSRoot{Root: root},
 		Env: &rsyncos.Env{
 			Stdout: rsynctest.NopClose(io.Discard),
 			Stderr: rsynctest.NopClose(io.Discard),

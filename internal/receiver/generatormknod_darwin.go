@@ -11,6 +11,9 @@ import (
 )
 
 func (rt *Transfer) createDevice(f *File, st fs.FileInfo, perm fs.FileMode) error {
+	if _, ok := rt.DestRoot.(rsync.OSRoot); !ok {
+		return fmt.Errorf("%s: devices and special files can only be created in a local directory", f.Name)
+	}
 	local := filepath.Join(rt.Dest, f.Name)
 	mode := f.Mode & rsync.S_IFMT
 	switch mode {

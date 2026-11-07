@@ -101,14 +101,16 @@ func (rt *Transfer) recvFile1(f *File) error {
 	if err != nil && !os.IsNotExist(err) {
 		rt.Logger.Printf("opening local file failed, continuing: %v", err)
 	}
-	defer localFile.Close()
+	if localFile != nil {
+		defer localFile.Close()
+	}
 	if err := rt.receiveData(f, localFile, perm); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (rt *Transfer) openLocalFile(f *File) (*os.File, error) {
+func (rt *Transfer) openLocalFile(f *File) (rsync.BasisFile, error) {
 	in, err := rt.DestRoot.Open(f.Name)
 	if err != nil {
 		return nil, err
@@ -116,14 +118,17 @@ func (rt *Transfer) openLocalFile(f *File) (*os.File, error) {
 
 	st, err := in.Stat()
 	if err != nil {
+		in.Close()
 		return nil, err
 	}
 
 	if st.IsDir() {
+		in.Close()
 		return nil, fmt.Errorf("%s is a directory", filepath.Join(rt.Dest, f.Name))
 	}
 
 	if !st.Mode().IsRegular() {
+		in.Close()
 		return nil, nil
 	}
 
@@ -131,7 +136,7 @@ func (rt *Transfer) openLocalFile(f *File) (*os.File, error) {
 }
 
 // rsync/receiver.c:receive_data
-func (rt *Transfer) receiveData(f *File, localFile *os.File, perm fs.FileMode) error {
+func (rt *Transfer) receiveData(f *File, localFile rsync.BasisFile, perm fs.FileMode) error {
 	rt.Progress.Reset(uint64(f.Length))
 	var sh rsync.SumHead
 	if err := sh.ReadFrom(rt.Conn); err != nil {

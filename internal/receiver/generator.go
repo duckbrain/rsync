@@ -70,7 +70,12 @@ func (rt *Transfer) skipFile(f *File, st os.FileInfo) (bool, error) {
 	}
 
 	if rt.Opts.AlwaysChecksum {
-		checksum, err := rsyncchecksum.RootChecksum(rt.DestRoot, f.Name)
+		in, err := rt.DestRoot.Open(f.Name)
+		if err != nil {
+			return false, err
+		}
+		defer in.Close()
+		checksum, err := rsyncchecksum.ReaderChecksum(in)
 		if err != nil {
 			return false, err
 		}
@@ -217,7 +222,7 @@ func (rt *Transfer) recvGenerator(idx int, f *File) error {
 		if rt.Opts.DebugGTE(rsyncopts.DEBUG_GENR, 1) {
 			rt.Logger.Printf("symlink %s -> %s", f.Name, f.LinkTarget)
 		}
-		if err := symlink(rt.DestRoot, f.LinkTarget, f.Name); err != nil {
+		if err := rt.DestRoot.Symlink(f.LinkTarget, f.Name); err != nil {
 			return err
 		}
 		if err := rt.setPerms(f, perm); err != nil {
@@ -373,7 +378,7 @@ func (rt *Transfer) recvGeneratorPartial(idx int, f *File) (bool, error) {
 }
 
 // rsync/generator.c:generate_and_send_sums
-func (rt *Transfer) generateAndSendSums(in *os.File, fileLen int64) error {
+func (rt *Transfer) generateAndSendSums(in io.Reader, fileLen int64) error {
 	sh := rsynccommon.SumSizesSqroot(fileLen)
 	if err := sh.WriteTo(rt.Conn); err != nil {
 		return err

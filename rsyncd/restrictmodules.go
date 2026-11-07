@@ -10,7 +10,7 @@ import (
 func restrictToModules(modules []Module) error {
 	var roDirs, rwDirs []string
 	for _, mod := range modules {
-		if mod.FS != nil {
+		if mod.FS != nil || mod.Root != nil {
 			continue
 		}
 		if mod.Writable {

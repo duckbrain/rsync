@@ -2,52 +2,24 @@ package receiver
 
 import (
 	"bytes"
-	"math/rand/v2"
-	"os"
 	"path/filepath"
-	"strconv"
+
+	"github.com/gokrazy/rsync"
 )
 
-// openTempFileRoot creates a randomly named file in root and returns an open
-// handle. It is similar to os.CreateTemp except that the directory must be
-// given, the file permissions can be controlled and patterns in the name are
-// not supported.  The name is always suffixed with a random number.
-func openTempFileRoot(root *os.Root, name string, perm os.FileMode) (string, *os.File, error) {
-	prefix := name
-
-	for attempt := 0; ; {
-		// Generate a reasonably random name which is unlikely to already
-		// exist. O_EXCL ensures that existing files generate an error.
-		name := prefix + strconv.FormatInt(rand.Int64(), 10)
-
-		f, err := root.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, perm)
-		if !os.IsExist(err) {
-			return name, f, err
-		}
-
-		if attempt++; attempt > 10000 {
-			return "", nil, &os.PathError{
-				Op:   "tempfile",
-				Path: name,
-				Err:  os.ErrExist,
-			}
-		}
-	}
-}
-
 type pendingFile struct {
-	root    *os.Root
+	root    rsync.DestRoot
 	tmpname string
 	fn      string
-	f       *os.File
+	f       rsync.PendingFile
 	sync    bool
 	sparse  bool
 	size    int64 // bytes received so far (only tracked for sparse files)
 	renamed bool
 }
 
-func newPendingFile(root *os.Root, fn string, sync, sparse bool) (*pendingFile, error) {
-	tmpname, f, err := openTempFileRoot(root, "."+filepath.Base(fn), 0o600)
+func newPendingFile(root rsync.DestRoot, fn string, sync, sparse bool) (*pendingFile, error) {
+	tmpname, f, err := root.CreateTemp(fn, 0o600)
 	if err != nil {
 		return nil, err
 	}

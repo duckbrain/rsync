@@ -1,6 +1,6 @@
 //go:build linux || darwin
 
-package receiver
+package rsync
 
 import (
 	"os"
@@ -8,6 +8,6 @@ import (
 	"github.com/google/renameio/v2"
 )
 
-func symlink(root *os.Root, oldname, newname string) error {
+func symlinkRoot(root *os.Root, oldname, newname string) error {
 	return renameio.SymlinkRoot(root, oldname, newname)
 }
