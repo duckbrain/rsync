@@ -808,7 +808,7 @@ func (o *Options) gokrazyTable() []poptOption {
 		//{"quiet", "q", POPT_ARG_NONE, nil, 'q'},
 		{"motd", "", POPT_ARG_VAL, &o.output_motd, 1},
 		{"no-motd", "", POPT_ARG_VAL, &o.output_motd, 0},
-		//{"stats", "", POPT_ARG_NONE, &o.do_stats, 0},
+		{"stats", "", POPT_ARG_NONE, &o.do_stats, 0},
 		//{"human-readable", "h", POPT_ARG_NONE, nil, 'h'},
 		//{"no-human-readable", "", POPT_ARG_VAL, &o.human_readable, 0},
 		//{"no-h", "", POPT_ARG_VAL, &o.human_readable, 0},

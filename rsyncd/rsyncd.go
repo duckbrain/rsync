@@ -422,11 +422,17 @@ func (s *Server) handleConn(ctx context.Context, conn *Conn, module *Module, pc 
 			mpx.WriteMsg(rsyncwire.MsgError, fmt.Appendf(nil, "gokr-rsync [receiver]: %v\n", err))
 		}
 	}()
-	return s.handleConnReceiver(module, crd, cwr, paths, opts, false, c, sessionChecksumSeed)
+	// A file the destination cannot hold is reported as information, not as
+	// an error: clients take MsgError as the end of the transfer, and this
+	// transfer goes on without the file.
+	reportError := func(msg string) {
+		mpx.WriteMsg(rsyncwire.MsgInfo, fmt.Appendf(nil, "gokr-rsync [receiver]: skipped: %s\n", msg))
+	}
+	return s.handleConnReceiver(module, crd, cwr, paths, opts, false, c, sessionChecksumSeed, reportError)
 }
 
 // handleConnReceiver is equivalent to rsync/main.c:do_server_recv
-func (s *Server) handleConnReceiver(module *Module, crd *rsyncwire.CountingReader, cwr *rsyncwire.CountingWriter, paths []string, opts *rsyncopts.Options, negotiate bool, c *rsyncwire.Conn, sessionChecksumSeed int32) (err error) {
+func (s *Server) handleConnReceiver(module *Module, crd *rsyncwire.CountingReader, cwr *rsyncwire.CountingWriter, paths []string, opts *rsyncopts.Options, negotiate bool, c *rsyncwire.Conn, sessionChecksumSeed int32, reportError func(string)) (err error) {
 	var destPath string
 	implicitModule := module == nil
 	if implicitModule {
@@ -478,9 +484,10 @@ func (s *Server) handleConnReceiver(module *Module, crd *rsyncwire.CountingReade
 		Env: &rsyncos.Env{
 			Stderr: s.stderr,
 		},
-		Conn:     c,
-		Seed:     sessionChecksumSeed,
-		Progress: progress.NewPrinter(io.Discard, time.Now),
+		Conn:        c,
+		Seed:        sessionChecksumSeed,
+		Progress:    progress.NewPrinter(io.Discard, time.Now),
+		ReportError: reportError,
 	}
 	if module.Root != nil {
 		rt.Dest = module.Name // for messages; there is no local path

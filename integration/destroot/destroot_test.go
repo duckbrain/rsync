@@ -1,6 +1,7 @@
 package destroot_test
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -218,5 +219,45 @@ func TestValidateRoot(t *testing.T) {
 	}
 	if _, err := rsyncd.NewServer([]rsyncd.Module{{Name: "rw", FS: fs.FS(os.DirFS("/")), Root: root, Writable: true}}, rsyncd.DontRestrict()); err != nil {
 		t.Errorf("a writable module with FS and Root was refused: %v", err)
+	}
+}
+
+// noLinksRoot cannot hold symlinks, like a destination that is not a local
+// directory.
+type noLinksRoot struct{ recordingRoot }
+
+func (noLinksRoot) Symlink(_, newname string) error {
+	return &fs.PathError{Op: "symlink", Path: newname, Err: errors.ErrUnsupported}
+}
+
+func (r noLinksRoot) Sub(name string) (rsync.DestRoot, error) {
+	sub, err := r.recordingRoot.Sub(name)
+	if err != nil {
+		return nil, err
+	}
+	return noLinksRoot{sub.(recordingRoot)}, nil
+}
+
+// TestReceiveSkipsWhatRootCannotHold: a symlink the root cannot create is
+// reported and skipped, and the rest of the transfer goes on.
+func TestReceiveSkipsWhatRootCannotHold(t *testing.T) {
+	src := t.TempDir()
+	mtime := time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)
+	writeFile(t, filepath.Join(src, "a.txt"), "alpha", mtime)
+	if err := os.Symlink("a.txt", filepath.Join(src, "link")); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(src, "z.txt"), "zulu", mtime)
+
+	dest := t.TempDir()
+	root, renamed := newRecordingRoot(t, dest)
+	module := rsyncd.Module{Name: "dest", Root: noLinksRoot{root}, Writable: true}
+	run(t, module, []string{"-a"}, []rsyncclient.Option{rsyncclient.WithSender()}, "./", []string{src + "/"})
+
+	if got, want := renamed(), []string{"a.txt", "z.txt"}; !slices.Equal(got, want) {
+		t.Errorf("files received = %q, want %q", got, want)
+	}
+	if _, err := os.Lstat(filepath.Join(dest, "link")); !os.IsNotExist(err) {
+		t.Errorf("link was created: %v", err)
 	}
 }

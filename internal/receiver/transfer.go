@@ -1,6 +1,7 @@
 package receiver
 
 import (
+	"fmt"
 	"io/fs"
 
 	"github.com/gokrazy/rsync"
@@ -45,6 +46,9 @@ type Transfer struct {
 	DestRoot rsync.DestRoot
 	Env      *rsyncos.Env
 	Progress progress.Printer
+	// ReportError, if set, tells the client about a file that could not be
+	// created. The transfer goes on without it.
+	ReportError func(msg string)
 
 	// state
 	Conn         *rsyncwire.Conn
@@ -62,3 +66,14 @@ type retouchDir struct {
 }
 
 func (rt *Transfer) listOnly() bool { return rt.Dest == "" }
+
+// fileError reports that f could not be created and goes on, as tridge rsync
+// does for a symlink or device the destination cannot hold.
+func (rt *Transfer) fileError(op string, f *File, err error) {
+	rt.IOErrors++
+	msg := fmt.Sprintf("%s %q failed: %v", op, f.Name, err)
+	rt.Logger.Printf("%s", msg)
+	if rt.ReportError != nil {
+		rt.ReportError(msg)
+	}
+}

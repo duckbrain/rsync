@@ -223,7 +223,8 @@ func (rt *Transfer) recvGenerator(idx int, f *File) error {
 			rt.Logger.Printf("symlink %s -> %s", f.Name, f.LinkTarget)
 		}
 		if err := rt.DestRoot.Symlink(f.LinkTarget, f.Name); err != nil {
-			return err
+			rt.fileError("symlink", f, err)
+			return nil
 		}
 		if err := rt.setPerms(f, perm); err != nil {
 			return err
@@ -236,7 +237,8 @@ func (rt *Transfer) recvGenerator(idx int, f *File) error {
 		mode == rsync.S_IFSOCK ||
 		mode == rsync.S_IFIFO) {
 		if err := rt.createDevice(f, st, perm); err != nil {
-			return err
+			rt.fileError("mknod", f, err)
+			return nil
 		}
 		return nil
 	}
